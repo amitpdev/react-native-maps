@@ -274,6 +274,41 @@ public class MapMarkerManager extends ViewGroupManager<MapMarker> {
         view.setTag(R.id.accessibility_label, accessibilityLabel);
     }
 
+    @ReactProp(name = "text")
+    public void setText(MapMarker view, String text) {
+        view.setText(text);
+    }
+
+    @ReactProp(name = "textColor", customType = "Color")
+    public void setTextColor(MapMarker view, int color) {
+        view.setTextColor(color);
+    }
+
+    @ReactProp(name = "textSize", defaultFloat = 32f)
+    public void setTextSize(MapMarker view, float size) {
+        view.setTextSize(size);
+    }
+
+    @ReactProp(name = "showTextBackground", defaultBoolean = false)
+    public void setShowTextBackground(MapMarker view, boolean show) {
+        view.setShowTextBackground(show);
+    }
+
+    @ReactProp(name = "textBackgroundColor", customType = "Color")
+    public void setTextBackgroundColor(MapMarker view, int color) {
+        view.setTextBackgroundColor(color);
+    }
+
+    @ReactProp(name = "textOffsetX", defaultFloat = 0f)
+    public void setTextOffsetX(MapMarker view, float offsetX) {
+        view.setTextOffsetX(offsetX);
+    }
+
+    @ReactProp(name = "textOffsetY", defaultFloat = 0f)
+    public void setTextOffsetY(MapMarker view, float offsetY) {
+        view.setTextOffsetY(offsetY);
+    }
+
     @Override
     public void addView(MapMarker parent, View child, int index) {
         // if an <Callout /> component is a child, then it is a callout view, NOT part of the

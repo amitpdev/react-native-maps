@@ -13,6 +13,7 @@ import android.widget.LinearLayout;
 import android.animation.ObjectAnimator;
 import android.util.Property;
 import android.animation.TypeEvaluator;
+import android.graphics.Paint;
 
 import androidx.annotation.Nullable;
 
@@ -119,10 +120,22 @@ public class MapMarker extends MapFeature {
         }
       };
 
+  private String markerText;
+  private int textColor = Color.BLACK;
+  private float textSize = 32f;
+  private boolean showTextBackground = false;
+  private int textBackgroundColor = Color.WHITE;
+
+  private float textOffsetX = 0f;
+  private float textOffsetY = 0f;
+
+  private float density;
+
   public MapMarker(Context context, MapMarkerManager markerManager) {
     super(context);
     this.context = context;
     this.markerManager = markerManager;
+    this.density = context.getResources().getDisplayMetrics().density;
     logoHolder = DraweeHolder.create(createDraweeHierarchy(), context);
     logoHolder.onAttach();
   }
@@ -255,6 +268,42 @@ public class MapMarker extends MapFeature {
   public void setTracksViewChanges(boolean tracksViewChanges) {
     this.tracksViewChanges = tracksViewChanges;
     updateTracksViewChanges();
+  }
+
+  public void setText(String text) {
+    this.markerText = text;
+    update(true);
+  }
+
+  public void setTextColor(int color) {
+    this.textColor = color;
+    update(true);
+  }
+
+  public void setTextSize(float size) {
+    // Convert from RN size to pixels
+    this.textSize = size * density;
+    update(true);
+  }
+
+  public void setShowTextBackground(boolean show) {
+    this.showTextBackground = show;
+    update(true);
+  }
+
+  public void setTextBackgroundColor(int color) {
+    this.textBackgroundColor = color;
+    update(true);
+  }
+
+  public void setTextOffsetX(float offsetX) {
+    this.textOffsetX = offsetX;
+    update(true);
+  }
+
+  public void setTextOffsetY(float offsetY) {
+    this.textOffsetY = offsetY;
+    update(true);
   }
 
   private void updateTracksViewChanges() {
@@ -449,26 +498,38 @@ public class MapMarker extends MapFeature {
   }
 
   private BitmapDescriptor getIcon() {
-    if (hasCustomMarkerView) {
-      // creating a bitmap from an arbitrary view
-      if (iconBitmapDescriptor != null) {
+    if (hasCustomMarkerView || markerText != null) {
         Bitmap viewBitmap = createDrawable();
-        int width = Math.max(iconBitmap.getWidth(), viewBitmap.getWidth());
-        int height = Math.max(iconBitmap.getHeight(), viewBitmap.getHeight());
-        Bitmap combinedBitmap = Bitmap.createBitmap(width, height, iconBitmap.getConfig());
-        Canvas canvas = new Canvas(combinedBitmap);
-        canvas.drawBitmap(iconBitmap, 0, 0, null);
-        canvas.drawBitmap(viewBitmap, 0, 0, null);
-        return BitmapDescriptorFactory.fromBitmap(combinedBitmap);
-      } else {
-        return BitmapDescriptorFactory.fromBitmap(createDrawable());
-      }
+        
+        if (iconBitmapDescriptor != null && iconBitmap != null) {
+            // Create exact size bitmap
+            int width = iconBitmap.getWidth();
+            int height = iconBitmap.getHeight();
+            
+            if (viewBitmap != null) {
+                width = Math.max(width, viewBitmap.getWidth());
+                height = Math.max(height, viewBitmap.getHeight());
+            }
+            
+            Bitmap combinedBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(combinedBitmap);
+            
+            // Draw marker icon
+            canvas.drawBitmap(iconBitmap, 0, 0, null);
+            
+            // Draw custom view/text if present
+            if (viewBitmap != null) {
+                canvas.drawBitmap(viewBitmap, 0, 0, null);
+            }
+            
+            return BitmapDescriptorFactory.fromBitmap(combinedBitmap);
+        } else {
+            return BitmapDescriptorFactory.fromBitmap(viewBitmap);
+        }
     } else if (iconBitmapDescriptor != null) {
-      // use local image as a marker
-      return iconBitmapDescriptor;
+        return iconBitmapDescriptor;
     } else {
-      // render the default marker pin
-      return BitmapDescriptorFactory.defaultMarker(this.markerHue);
+        return BitmapDescriptorFactory.defaultMarker(this.markerHue);
     }
   }
 
@@ -522,25 +583,72 @@ public class MapMarker extends MapFeature {
   }
 
   private Bitmap createDrawable() {
-    int width = this.width <= 0 ? 100 : this.width;
-    int height = this.height <= 0 ? 100 : this.height;
-    this.buildDrawingCache();
-
-    // Do not create the doublebuffer-bitmap each time. reuse it to save memory.
-    Bitmap bitmap = mLastBitmapCreated;
-
-    if (bitmap == null ||
-            bitmap.isRecycled() ||
-            bitmap.getWidth() != width ||
-            bitmap.getHeight() != height) {
-      bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-      mLastBitmapCreated = bitmap;
+    int requiredWidth = 0;
+    int requiredHeight = 0;
+    
+    // Get marker dimensions from icon or use default size
+    if (iconBitmap != null) {
+        requiredWidth = iconBitmap.getWidth();
+        requiredHeight = iconBitmap.getHeight();
     } else {
-      bitmap.eraseColor(Color.TRANSPARENT);
+        // Use default marker dimensions if no custom marker
+        requiredWidth = (int) (48 * density);  // Default size in dp
+        requiredHeight = (int) (48 * density);
+    }
+    
+    // Add space for text if needed
+    if (markerText != null && !markerText.isEmpty()) {
+        Paint measurePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        measurePaint.setTextSize(textSize);
+        float textWidth = measurePaint.measureText(markerText);
+        Paint.FontMetrics fm = measurePaint.getFontMetrics();
+        float textHeight = fm.bottom - fm.top;
+        
+        // Only expand bitmap if text goes beyond marker dimensions
+        requiredWidth = Math.max(requiredWidth, (int) Math.ceil(textWidth + 32)); // 16px padding on each side
+        requiredHeight = Math.max(requiredHeight, (int) Math.ceil(textHeight + 32));
+    }
+    
+    // Create bitmap with exact required dimensions
+    Bitmap bitmap = Bitmap.createBitmap(requiredWidth, requiredHeight, Bitmap.Config.ARGB_8888);
+    Canvas canvas = new Canvas(bitmap);
+
+    // Draw marker first
+    if (hasCustomMarkerView) {
+        this.draw(canvas);
+    } else if (iconBitmap != null) {
+        canvas.drawBitmap(iconBitmap, 0, 0, null);
     }
 
-    Canvas canvas = new Canvas(bitmap);
-    this.draw(canvas);
+    // Draw text if present
+    if (markerText != null && !markerText.isEmpty()) {
+        Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        textPaint.setColor(textColor);
+        textPaint.setTextSize(textSize);
+        textPaint.setTextAlign(Paint.Align.LEFT);
+        
+        Paint.FontMetrics fm = textPaint.getFontMetrics();
+        float textWidth = textPaint.measureText(markerText);
+        
+        // Calculate text position relative to marker center
+        float xPos = (requiredWidth - textWidth) / 2 + textOffsetX;
+        float yPos = 16 + textOffsetY - fm.top; // 16px from top
+        
+        if (showTextBackground) {
+            float bgPadding = 8;
+            Paint bgPaint = new Paint();
+            bgPaint.setColor(textBackgroundColor);
+            canvas.drawRect(
+                xPos - bgPadding,
+                yPos + fm.top - bgPadding,
+                xPos + textWidth + bgPadding,
+                yPos + fm.bottom + bgPadding,
+                bgPaint
+            );
+        }
+        
+        canvas.drawText(markerText, xPos, yPos, textPaint);
+    }
 
     return bitmap;
   }
